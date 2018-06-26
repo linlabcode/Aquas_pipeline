@@ -56,7 +56,8 @@ pushAquasAlignQC <- function(project.dir, dt.location, chip.type = "histone",
 		} else if(endedness == "-se"){
 			input.file.cmd <- sprintf("-fastq1 %s", fastq.files[1])
 			} else {
-				input.file.cmd <- sprintf("-fastq1_1:%s -fastq1_2:%s", fastq.files[1], fastq.files[2])
+
+				input.file.cmd <- sprintf("-fastq1_1 %s -fastq1_2 %s", fastq.files[1], fastq.files[2])
 			}
 
 		##Check if everything needs to be done for true replicates
@@ -236,9 +237,19 @@ mvBams <- function(project.dir, dt.location){
 		
 		file.id <- as.character(subset(df.sample.info, NAME == sample.name)$UNIQUE_ID)
 
+		##location of the fastq file
+		fastq.file.location <- as.character(subset(df.sample.info, NAME == sample.name)$FASTQ_FILE)
+		fastq.files <- unlist(strsplit(split = "::", fastq.file.location))
+
 		##Move the bam files
-  		all.bam.files <- list.files(path = aquas.dir, pattern = "*.nodup.bam$", 
-  			full.names = T, recursive = T)
+		if(length(fastq.files) == 2){
+			all.bam.files <- list.files(path = aquas.dir, pattern = "*.PE2SE.nodup.bam$", 
+  				full.names = T, recursive = T)
+		} else if (length(fastq.files) == 1){
+			all.bam.files <- list.files(path = aquas.dir, pattern = "*.nodup.bam$", 
+  				full.names = T, recursive = T)
+		}
+
 		bam.file.logical <- grepl(pattern = file.id, x = all.bam.files)
 		bam.file.location <- file.path(all.bam.files[bam.file.logical])
 
@@ -263,9 +274,19 @@ mvBams <- function(project.dir, dt.location){
 		
 		file.id <- as.character(subset(df.sample.info, NAME == sample.name)$UNIQUE_ID)
 
+		##location of the fastq file
+		fastq.file.location <- as.character(subset(df.sample.info, NAME == sample.name)$FASTQ_FILE)
+		fastq.files <- unlist(strsplit(split = "::", fastq.file.location))
+
 		##Move the tagAlign files
-  		all.tagAlign.files <- list.files(path = aquas.dir, pattern = "*.nodup.tagAlign.gz$", 
-  			full.names = T, recursive = T)
+		if(length(fastq.files) == 2){
+			all.tagAlign.files  <- list.files(path = aquas.dir, pattern = "*.PE2SE.nodup.tagAlign.gz$", 
+  				full.names = T, recursive = T)
+		} else if (length(fastq.files) == 1){
+			all.tagAlign.files <- list.files(path = aquas.dir, pattern = "*.nodup.tagAlign.gz$", 
+  				full.names = T, recursive = T)
+		}
+
 		tagAlign.file.logical <- grepl(pattern = file.id, x = all.tagAlign.files)
 		tagAlign.file.location <- file.path(all.tagAlign.files[tagAlign.file.logical])
 
@@ -466,9 +487,19 @@ getCustomQC <- function(project.dir, dt.location, peaks.dirname){
 			stop("Experiment bam file not found")
 		}
 
+		##location of the fastq file
+		fastq.file.location <- as.character(subset(df.sample.info, NAME == sample.name)$FASTQ_FILE)
+		fastq.files <- unlist(strsplit(split = "::", fastq.file.location))
+
 		##get estimated fragment length from cross-corr. analysis log
-		cc.qc.log.files <- list.files(path = aquas.dir, pattern = "*.cc.qc$", full.names = T,
-			recursive = T)
+		if(length(fastq.files) == 2){
+			cc.qc.log.files <- list.files(path = aquas.dir, pattern = "*.R1.cc.qc$", full.names = T,
+				recursive = T)
+		} else if (length(fastq.files) == 1){
+			cc.qc.log.files <- list.files(path = aquas.dir, pattern = "*.cc.qc$", full.names = T,
+				recursive = T)
+		}
+
 		expt.cc.file.logical <- grepl(pattern = expt.file.id, x = cc.qc.log.files)
 		expt.cc.file.location <- cc.qc.log.files[expt.cc.file.logical]
 		fraglen <- read.delim(expt.cc.file.location, header = F)[1, 3]
