@@ -1,6 +1,7 @@
 suppressMessages(library(GenomicFeatures))
 suppressMessages(library(GenomicAlignments))
 
+# TODO: remove absolute paths and turn them into inputs
 scripts.dir <- "/storage/cylin/bin/aquas/chip"
 fn.dir <- "/storage/cylin/anaconda3/envs/aquas_chipseq/bin/"
 
@@ -56,7 +57,7 @@ pushAquasAlignQC <- function(project.dir, dt.location, chip.type = "histone",
 		} else if(endedness == "-se"){
 			input.file.cmd <- sprintf("-fastq1 %s", fastq.files[1])
 			} else {
-				input.file.cmd <- sprintf("-fastq1_1:%s -fastq1_2:%s", fastq.files[1], fastq.files[2])
+				input.file.cmd <- sprintf("-fastq1_1 %s -fastq1_2 %s", fastq.files[1], fastq.files[2])
 			}
 
 		##Check if everything needs to be done for true replicates
@@ -68,6 +69,9 @@ pushAquasAlignQC <- function(project.dir, dt.location, chip.type = "histone",
 		screen.name <- sprintf("align%d%d", sample(1:1000000, size = 1), sample(1:1000000, size = 1))
 		aquas.cmd <- sprintf("python %s/chipseq.py -screen %s", scripts.dir, screen.name)
 		aquas.cmd <- sprintf("%s -type %s -final_stage xcor", aquas.cmd, chip.type)
+		if(endedness == "-pe"){
+			aquas.cmd <- sprintf("%s -pe_no_trim_fastq", aquas.cmd)
+		}
 		aquas.cmd <- sprintf("%s -out_dir %s %s -species %s", aquas.cmd, output.dir, endedness, genome.name)
 		aquas.cmd <- sprintf("%s -system slurm -nth %d %s", aquas.cmd, ncores, input.file.cmd)
 
@@ -236,9 +240,19 @@ mvBams <- function(project.dir, dt.location){
 		
 		file.id <- as.character(subset(df.sample.info, NAME == sample.name)$UNIQUE_ID)
 
+		##location of the fastq file
+		fastq.file.location <- as.character(subset(df.sample.info, NAME == sample.name)$FASTQ_FILE)
+		fastq.files <- unlist(strsplit(split = "::", fastq.file.location))
+
 		##Move the bam files
-  		all.bam.files <- list.files(path = aquas.dir, pattern = "*.nodup.bam$", 
-  			full.names = T, recursive = T)
+		if(length(fastq.files) == 2){
+			all.bam.files <- list.files(path = aquas.dir, pattern = "*.PE2SE.nodup.bam$", 
+  				full.names = T, recursive = T)
+		} else if (length(fastq.files) == 1){
+			all.bam.files <- list.files(path = aquas.dir, pattern = "*.nodup.bam$", 
+  				full.names = T, recursive = T)
+		}
+  		
 		bam.file.logical <- grepl(pattern = file.id, x = all.bam.files)
 		bam.file.location <- file.path(all.bam.files[bam.file.logical])
 
@@ -263,9 +277,19 @@ mvBams <- function(project.dir, dt.location){
 		
 		file.id <- as.character(subset(df.sample.info, NAME == sample.name)$UNIQUE_ID)
 
+		##location of the fastq file
+		fastq.file.location <- as.character(subset(df.sample.info, NAME == sample.name)$FASTQ_FILE)
+		fastq.files <- unlist(strsplit(split = "::", fastq.file.location))
+
 		##Move the tagAlign files
-  		all.tagAlign.files <- list.files(path = aquas.dir, pattern = "*.nodup.tagAlign.gz$", 
-  			full.names = T, recursive = T)
+		if(length(fastq.files) == 2){
+			all.tagAlign.files  <- list.files(path = aquas.dir, pattern = "*.PE2SE.nodup.tagAlign.gz$",
+  				full.names = T, recursive = T)
+		} else if (length(fastq.files) == 1){
+			all.tagAlign.files <- list.files(path = aquas.dir, pattern = "*.nodup.tagAlign.gz$",
+  				full.names = T, recursive = T)
+		}
+
 		tagAlign.file.logical <- grepl(pattern = file.id, x = all.tagAlign.files)
 		tagAlign.file.location <- file.path(all.tagAlign.files[tagAlign.file.logical])
 
@@ -403,8 +427,9 @@ createSignalTrack <- function(project.dir, dt.location){
 		#bw.output.file <- sprintf("%s%s", bdg.output.file, "_treat_pileup.bw")
 		#wig.output.file <- sprintf("%s%s", bdg.output.file, "_treat_pileup.wig")
 
-		signal.cmd <- sprintf("%s callpeak -t %s -c %s -B --nomodel --extsize %d --trackline --SPMR -g %s -n %s", 
+		signal.cmd <- sprintf("%s callpeak -t %s -c %s -B --nomodel --extsize %d --trackline --SPMR -g %s -n %s",
 			macs2.location, expt.bam.file.location, bkg.bam.file.location, fraglen, genome.abbrv, bdg.output.file)
+		# TODO: make it work if there is no background
 		track.name.cmd <- sprintf("sed -i '/name/ s/treatment pileup/%s/' %s_treat_pileup.bdg", 
 			sample.name ,bdg.output.file)
 		gzip.cmd <- sprintf("gzip %s_treat_pileup.bdg", bdg.output.file)
@@ -441,7 +466,6 @@ getCustomQC <- function(project.dir, dt.location, peaks.dirname){
 	if(!dir.exists(aquas.dir)){
 		stop("No aquas output")
 	}
-
 	df.sample.info <- read.delim(dt.location, sep = "\t", header = T)
 	sample.names <- as.character(subset(df.sample.info, ENRICHED_MACS != "NONE")$NAME)
 	df <- do.call(rbind, mclapply(sample.names, function(sample.name){
@@ -466,9 +490,18 @@ getCustomQC <- function(project.dir, dt.location, peaks.dirname){
 			stop("Experiment bam file not found")
 		}
 
+		##location of the fastq file
+		fastq.file.location <- as.character(subset(df.sample.info, NAME == sample.name)$FASTQ_FILE)
+		fastq.files <- unlist(strsplit(split = "::", fastq.file.location))
+
 		##get estimated fragment length from cross-corr. analysis log
-		cc.qc.log.files <- list.files(path = aquas.dir, pattern = "*.cc.qc$", full.names = T,
-			recursive = T)
+		if(length(fastq.files) == 2){
+			cc.qc.log.files <- list.files(path = aquas.dir, pattern = "*.R1.cc.qc$", full.names = T,
+				recursive = T)
+		} else if (length(fastq.files) == 1){
+			cc.qc.log.files <- list.files(path = aquas.dir, pattern = "*.cc.qc$", full.names = T,
+				recursive = T)
+		}
 		expt.cc.file.logical <- grepl(pattern = expt.file.id, x = cc.qc.log.files)
 		expt.cc.file.location <- cc.qc.log.files[expt.cc.file.logical]
 		fraglen <- read.delim(expt.cc.file.location, header = F)[1, 3]
